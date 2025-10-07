@@ -28,7 +28,10 @@ COPY . .
 # 安裝系統相依套件（特別補上 libnspr4、libgtk、libxshmfence1）
 # ------------------------------
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    libnspr4 libgtk-3-0 libxshmfence1 \
+    libnspr4 libnss3 libdbus-1-3 \
+    libatk1.0-0t64 libatk-bridge2.0-0t64 libatspi2.0-0t64 \
+    libxcomposite1 libxdamage1 libxfixes3 libgbm1 libxcb1 libxkbcommon0 \
+    libasound2t64 libgtk-3-0 libxshmfence1 \
     && rm -rf /var/lib/apt/lists/*
 
 # ------------------------------
