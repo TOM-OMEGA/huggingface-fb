@@ -5,6 +5,10 @@ import time
 import requests
 from flask import Flask, jsonify, request
 from playwright.sync_api import sync_playwright
+from keep_alive import keep_alive
+
+keep_alive()
+
 
 app = Flask(__name__)
 
