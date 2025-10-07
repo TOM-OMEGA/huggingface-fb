@@ -4,7 +4,7 @@
 FROM python:3.11-slim
 
 # ------------------------------
-# 安裝 Playwright 依賴與常用工具
+# 安裝 Playwright 依賴與常用系統套件
 # ------------------------------
 RUN apt-get update && apt-get install -y \
     wget curl unzip gnupg \
@@ -12,7 +12,7 @@ RUN apt-get update && apt-get install -y \
     libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 \
     libxfixes3 libxrandr2 libgbm1 libpango-1.0-0 libcairo2 libasound2 \
     fonts-liberation libappindicator3-1 xdg-utils \
-    libgtk-3-0 libxshmfence1 \
+    libgtk-3-0 libxshmfence1 libglib2.0-0 \
     && rm -rf /var/lib/apt/lists/*
 
 # ------------------------------
@@ -23,8 +23,9 @@ WORKDIR /app
 # ------------------------------
 # 複製 requirements.txt 並安裝 Python 套件
 # ------------------------------
-COPY requirements.txt ./ 
-RUN pip install --no-cache-dir -r requirements.txt
+COPY requirements.txt ./
+RUN pip install --no-cache-dir -U pip setuptools wheel && \
+    pip install --no-cache-dir -r requirements.txt
 
 # ------------------------------
 # 複製應用程式原始碼
@@ -32,18 +33,18 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # ------------------------------
-# 安裝 Chromium（Playwright 使用）
+# 安裝 Playwright 與 Chromium
 # ------------------------------
 RUN playwright install --with-deps chromium
 
 # ------------------------------
-# 設定環境變數
+# 設定環境變數與 Port
 # ------------------------------
 ENV PORT=8080
 EXPOSE 8080
 
 # ------------------------------
-# ✅ 使用 start.sh 啟動（可自動重啟）
+# ✅ 啟動 Script
 # ------------------------------
 RUN chmod +x start.sh
 CMD ["bash", "start.sh"]
