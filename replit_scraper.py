@@ -5,35 +5,43 @@ import time
 import requests
 from flask import Flask, jsonify, request
 from playwright.sync_api import sync_playwright
-from keep_alive import keep_alive
 
-keep_alive()
+# -------------------------------
+# 🧱 Replit 防睡眠功能（內建）
+# -------------------------------
+from threading import Thread
+
+keep_alive_app = Flask("keep_alive")
+
+@keep_alive_app.route('/')
+def keep_alive_home():
+    return "✅ Replit keep-alive server is running!", 200
+
+@keep_alive_app.route('/ping')
+def keep_alive_ping():
+    return "pong", 200
+
+def run_keep_alive():
+    port = int(os.getenv("KEEP_ALIVE_PORT", 8080))
+    keep_alive_app.run(host="0.0.0.0", port=port)
+
+def keep_alive():
+    """啟動防睡眠背景 Flask 伺服器"""
+    t = Thread(target=run_keep_alive)
+    t.daemon = True
+    t.start()
 
 
+# -------------------------------
+# ⚙️ 主應用設定
+# -------------------------------
 app = Flask(__name__)
-
 POSTS_FILE = "posts.json"
 COOKIE_FILE = "fb_state.json"
-KEEP_ALIVE_URL = os.getenv("KEEP_ALIVE_URL")
-
-# -------------------------------
-# 🧱 防止休眠機制
-# -------------------------------
-def keep_alive():
-    if not KEEP_ALIVE_URL:
-        return
-    while True:
-        try:
-            requests.get(KEEP_ALIVE_URL)
-        except:
-            pass
-        time.sleep(300)  # 每5分鐘ping自己一次
-
-threading.Thread(target=keep_alive, daemon=True).start()
 
 
 # -------------------------------
-# 📦 儲存/讀取貼文
+# 📂 儲存/讀取貼文
 # -------------------------------
 def save_posts(posts):
     with open(POSTS_FILE, "w", encoding="utf-8") as f:
@@ -50,7 +58,7 @@ def load_posts():
 
 
 # -------------------------------
-# 🤖 爬蟲主程式
+# 🤖 Facebook 爬蟲主程式
 # -------------------------------
 def scrape_facebook():
     print("🚀 啟動 Facebook 爬蟲")
@@ -109,16 +117,7 @@ def scrape_facebook():
 
 
 # -------------------------------
-# 📡 路由：啟動爬蟲
-# -------------------------------
-@app.route("/run", methods=["GET"])
-def run_scraper():
-    threading.Thread(target=scrape_facebook).start()
-    return jsonify({"message": "爬蟲啟動成功"}), 200
-
-
-# -------------------------------
-# 📡 路由：上傳 Cookie
+# 📡 API 路由
 # -------------------------------
 @app.route("/upload", methods=["POST"])
 def upload_cookie():
@@ -132,18 +131,22 @@ def upload_cookie():
         return jsonify({"error": str(e)}), 500
 
 
-# -------------------------------
-# 📡 路由：查詢貼文狀態
-# -------------------------------
+@app.route("/run", methods=["GET"])
+def run_scraper():
+    threading.Thread(target=scrape_facebook).start()
+    return jsonify({"message": "🚀 爬蟲已啟動"}), 200
+
+
 @app.route("/status", methods=["GET"])
 def status():
     posts = load_posts()
-    return jsonify(posts[-5:]), 200
+    return jsonify({
+        "fb_state.json": os.path.exists(COOKIE_FILE),
+        "posts_count": len(posts),
+        "recent_posts": posts[-3:] if posts else []
+    }), 200
 
 
-# -------------------------------
-# 📡 健康檢查首頁
-# -------------------------------
 @app.route("/", methods=["GET"])
 def home():
     return jsonify({
@@ -153,12 +156,10 @@ def home():
 
 
 # -------------------------------
-# 🚀 啟動 Flask
+# 🚀 主程式啟動點
 # -------------------------------
-def run():
+if __name__ == "__main__":
+    keep_alive()  # ✅ 啟動防睡眠伺服器
     port = int(os.getenv("PORT", 5000))
     print(f"🌐 Flask 啟動於 port {port}")
     app.run(host="0.0.0.0", port=port)
-
-if __name__ == "__main__":
-    run()
