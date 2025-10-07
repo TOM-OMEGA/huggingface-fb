@@ -160,14 +160,13 @@ def home():
 # 🚀 主程式啟動點
 # =========================================================
 if __name__ == "__main__":
-    try:
-        keep_alive()  # ✅ 啟動防睡眠伺服器
-    except OSError:
-        print("⚠️ keep_alive 已在運行，略過。")
+    # ✅ 啟動防睡眠伺服器（固定使用 8081）
+    os.environ["KEEP_ALIVE_PORT"] = "8081"
+    keep_alive()
 
-    port = int(os.getenv("PORT", 0))  # 0 = 隨機分配可用 port
-    print(f"🌐 Flask 啟動於 port {port}")
-    try:
-        app.run(host="0.0.0.0", port=port)
-    except OSError:
-        print("⚠️ 主 Flask 伺服器已在運行，略過。")
+    # ✅ Replit 會自動提供 PORT 環境變數（外部可存取的 port）
+    port = int(os.getenv("PORT", 5000))
+    print(f"🌐 主 Flask 服務啟動於 port {port}")
+
+    # ✅ 禁用 reloader 避免自動重啟造成衝突
+    app.run(host="0.0.0.0", port=port, use_reloader=False)
