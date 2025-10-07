@@ -1,7 +1,12 @@
 # ------------------------------
-# ✅ 使用官方 Playwright Python 基底映像
+# ✅ 使用官方 Playwright Python 基底映像（支援 Chromium）
 # ------------------------------
 FROM mcr.microsoft.com/playwright/python:v1.48.0-jammy
+
+# ------------------------------
+# 🔁 強制重建層：每次 commit 都會重建 Docker cache
+# ------------------------------
+ARG CACHEBUST=$(date +%s)
 
 # ------------------------------
 # 設定工作目錄
@@ -20,16 +25,15 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # ------------------------------
-# 安裝系統相依套件（額外補 libnspr4、libgtk）
+# 安裝系統相依套件（特別補上 libnspr4、libgtk、libxshmfence1）
 # ------------------------------
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libnspr4 libgtk-3-0 libxshmfence1 \
     && rm -rf /var/lib/apt/lists/*
 
 # ------------------------------
-# ✅ 強制重新安裝 Chromium 並清除舊快取
+# ✅ 強制重新安裝 Playwright Chromium 並清除舊快取
 # ------------------------------
-ARG CACHEBUSTER=1
 RUN rm -rf /root/.cache/ms-playwright && \
     playwright install --with-deps chromium
 
@@ -44,4 +48,3 @@ EXPOSE 8080
 # ------------------------------
 RUN chmod +x start.sh
 CMD ["bash", "start.sh"]
-# Force rebuild Tue Oct  7 02:29:42 PM UTC 2025
