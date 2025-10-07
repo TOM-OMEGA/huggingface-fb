@@ -2,40 +2,30 @@ import os
 import json
 import threading
 import time
-import requests
 from flask import Flask, jsonify, request
-from playwright.sync_api import sync_playwright
-from threading import Thread
+from pyppeteer import launch
+import asyncio
 
 # =========================================================
-# 🧱 Replit 防睡眠功能（使用獨立 Flask port）
+# 🧱 防睡眠 Flask 伺服器（獨立埠）
 # =========================================================
 keep_alive_app = Flask("keep_alive")
 
 @keep_alive_app.route('/')
 def keep_alive_home():
-    return "✅ Replit keep-alive server is running!", 200
-
-@keep_alive_app.route('/ping')
-def keep_alive_ping():
-    return "pong", 200
+    return "✅ Keep-alive server is running!", 200
 
 def run_keep_alive():
-    port = int(os.getenv("KEEP_ALIVE_PORT", 8081))  # ⚙️ 改為不與主服務衝突的 port
-    try:
-        keep_alive_app.run(host="0.0.0.0", port=port)
-    except OSError:
-        print(f"⚠️ keep_alive port {port} 已被占用，略過啟動。")
+    port = int(os.getenv("KEEP_ALIVE_PORT", 8081))
+    keep_alive_app.run(host="0.0.0.0", port=port)
 
 def keep_alive():
-    """啟動防睡眠背景 Flask 伺服器"""
-    t = Thread(target=run_keep_alive)
+    t = threading.Thread(target=run_keep_alive)
     t.daemon = True
     t.start()
 
-
 # =========================================================
-# ⚙️ 主應用設定
+# ⚙️ 主 Flask API
 # =========================================================
 app = Flask(__name__)
 POSTS_FILE = "posts.json"
@@ -43,7 +33,7 @@ COOKIE_FILE = "fb_state.json"
 
 
 # =========================================================
-# 📂 儲存/讀取貼文
+# 📂 儲存與讀取
 # =========================================================
 def save_posts(posts):
     with open(POSTS_FILE, "w", encoding="utf-8") as f:
@@ -60,9 +50,9 @@ def load_posts():
 
 
 # =========================================================
-# 🤖 Facebook 爬蟲主程式
+# 🤖 Facebook 爬蟲主程式（使用 Pyppeteer）
 # =========================================================
-def scrape_facebook():
+async def scrape_facebook_async():
     print("🚀 啟動 Facebook 爬蟲")
 
     if not os.path.exists(COOKIE_FILE):
@@ -72,49 +62,53 @@ def scrape_facebook():
     fb_url = os.getenv("FB_PAGE_URL", "https://www.facebook.com/appledaily.tw/posts")
 
     try:
-        with sync_playwright() as p:
-            print("🧱 啟動 Chromium...")
-            browser = p.chromium.launch(
-                headless=True,
-                args=["--no-sandbox", "--disable-dev-shm-usage"]
-            )
-            context = browser.new_context(
-                storage_state=COOKIE_FILE,
-                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                           "AppleWebKit/537.36 (KHTML, like Gecko) "
-                           "Chrome/121.0 Safari/537.36",
-                viewport={"width": 1280, "height": 800}
-            )
-            page = context.new_page()
-            print(f"🌍 載入粉專：{fb_url}")
-            page.goto(fb_url, timeout=120000)
-            page.wait_for_load_state("networkidle", timeout=60000)
+        print("🧱 啟動 Chromium (Pyppeteer 模式)...")
+        browser = await launch(
+            headless=True,
+            executablePath="/usr/bin/google-chrome",
+            args=["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu"]
+        )
+        page = await browser.newPage()
 
-            for i in range(3):
-                page.evaluate("window.scrollBy(0, document.body.scrollHeight)")
-                page.wait_for_timeout(5000)
+        # 載入 cookie
+        with open(COOKIE_FILE, "r", encoding="utf-8") as f:
+            cookie_data = json.load(f)
+        cookies = cookie_data.get("cookies", [])
+        await page.setCookie(*cookies)
 
-            posts = []
-            articles = page.query_selector_all('div[role="article"]')
-            for post in articles:
-                text_el = post.query_selector('div[data-ad-preview="message"], span[dir="auto"]')
-                text = text_el.inner_text().strip() if text_el else ""
-                img_el = post.query_selector('img[src*="scontent"]')
-                img = img_el.get_attribute("src") if img_el else None
-                if text or img:
-                    posts.append({
-                        "content": text,
-                        "image": img,
-                        "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
-                    })
+        print(f"🌍 前往：{fb_url}")
+        await page.goto(fb_url, {"timeout": 120000, "waitUntil": "networkidle2"})
 
-            browser.close()
-            print(f"✅ 完成，擷取 {len(posts)} 則貼文")
-            save_posts(posts)
-            return posts
+        # 模擬滾動以載入更多內容
+        for i in range(3):
+            await page.evaluate("window.scrollBy(0, document.body.scrollHeight)")
+            await asyncio.sleep(3)
+
+        posts = []
+        elements = await page.querySelectorAll('div[role="article"]')
+        for el in elements:
+            text_el = await el.querySelector('div[data-ad-preview="message"], span[dir="auto"]')
+            text = await page.evaluate("(el) => el.innerText", text_el) if text_el else ""
+            img_el = await el.querySelector('img[src*="scontent"]')
+            img = await page.evaluate("(el) => el.src", img_el) if img_el else None
+            if text or img:
+                posts.append({
+                    "content": text.strip(),
+                    "image": img,
+                    "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
+                })
+
+        await browser.close()
+        print(f"✅ 完成，擷取 {len(posts)} 則貼文")
+        save_posts(posts)
+        return posts
 
     except Exception as e:
         print(f"❌ 執行錯誤：{e}")
+
+
+def scrape_facebook():
+    asyncio.run(scrape_facebook_async())
 
 
 # =========================================================
@@ -151,22 +145,18 @@ def status():
 @app.route("/", methods=["GET"])
 def home():
     return jsonify({
-        "service": "Replit FB Scraper",
+        "service": "Railway FB Scraper (Pyppeteer)",
         "status": "online"
     }), 200
 
 
 # =========================================================
-# 🚀 主程式啟動點
+# 🚀 主程式啟動
 # =========================================================
 if __name__ == "__main__":
-    # ✅ 啟動防睡眠伺服器（固定使用 8081）
     os.environ["KEEP_ALIVE_PORT"] = "8081"
     keep_alive()
 
-    # ✅ Replit 會自動提供 PORT 環境變數（外部可存取的 port）
     port = int(os.getenv("PORT", 5000))
     print(f"🌐 主 Flask 服務啟動於 port {port}")
-
-    # ✅ 禁用 reloader 避免自動重啟造成衝突
     app.run(host="0.0.0.0", port=port, use_reloader=False)
