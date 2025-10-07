@@ -1,5 +1,5 @@
 # ------------------------------
-# ✅ 使用 Playwright 官方映像（已內建 Chromium + 所有依賴）
+# ✅ 使用官方 Playwright Python 基底映像
 # ------------------------------
 FROM mcr.microsoft.com/playwright/python:v1.48.0-jammy
 
@@ -9,15 +9,29 @@ FROM mcr.microsoft.com/playwright/python:v1.48.0-jammy
 WORKDIR /app
 
 # ------------------------------
-# 複製 requirements 並安裝 Python 套件
+# 複製 requirements.txt 並安裝 Python 套件
 # ------------------------------
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # ------------------------------
-# 複製應用程式原始碼
+# 複製專案檔案
 # ------------------------------
 COPY . .
+
+# ------------------------------
+# 安裝系統相依套件（額外補 libnspr4、libgtk）
+# ------------------------------
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libnspr4 libgtk-3-0 libxshmfence1 \
+    && rm -rf /var/lib/apt/lists/*
+
+# ------------------------------
+# ✅ 強制重新安裝 Chromium 並清除舊快取
+# ------------------------------
+ARG CACHEBUSTER=1
+RUN rm -rf /root/.cache/ms-playwright && \
+    playwright install --with-deps chromium
 
 # ------------------------------
 # 設定環境變數
@@ -26,7 +40,7 @@ ENV PORT=8080
 EXPOSE 8080
 
 # ------------------------------
-# ✅ 使用 start.sh 啟動
+# 啟動程式
 # ------------------------------
 RUN chmod +x start.sh
 CMD ["bash", "start.sh"]
