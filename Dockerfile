@@ -1,19 +1,7 @@
 # ------------------------------
-# ✅ 使用穩定版 Python 3.11（Playwright 支援最佳）
+# ✅ 使用 Playwright 官方映像（已內建 Chromium + 所有依賴）
 # ------------------------------
-FROM python:3.11-slim
-
-# ------------------------------
-# 安裝 Playwright 依賴與常用系統套件
-# ------------------------------
-RUN apt-get update && apt-get install -y \
-    wget curl unzip gnupg \
-    libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 libcups2 \
-    libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 \
-    libxfixes3 libxrandr2 libgbm1 libpango-1.0-0 libcairo2 libasound2 \
-    fonts-liberation libappindicator3-1 xdg-utils \
-    libgtk-3-0 libxshmfence1 libglib2.0-0 \
-    && rm -rf /var/lib/apt/lists/*
+FROM mcr.microsoft.com/playwright/python:v1.48.0-jammy
 
 # ------------------------------
 # 設定工作目錄
@@ -21,11 +9,10 @@ RUN apt-get update && apt-get install -y \
 WORKDIR /app
 
 # ------------------------------
-# 複製 requirements.txt 並安裝 Python 套件
+# 複製 requirements 並安裝 Python 套件
 # ------------------------------
-COPY requirements.txt ./
-RUN pip install --no-cache-dir -U pip setuptools wheel && \
-    pip install --no-cache-dir -r requirements.txt
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
 # ------------------------------
 # 複製應用程式原始碼
@@ -33,18 +20,13 @@ RUN pip install --no-cache-dir -U pip setuptools wheel && \
 COPY . .
 
 # ------------------------------
-# 安裝 Playwright 與 Chromium
-# ------------------------------
-RUN playwright install --with-deps chromium
-
-# ------------------------------
-# 設定環境變數與 Port
+# 設定環境變數
 # ------------------------------
 ENV PORT=8080
 EXPOSE 8080
 
 # ------------------------------
-# ✅ 啟動 Script
+# ✅ 使用 start.sh 啟動
 # ------------------------------
 RUN chmod +x start.sh
 CMD ["bash", "start.sh"]
