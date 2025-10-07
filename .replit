@@ -5,6 +5,10 @@ modules = ["python-3.11"]
 localPort = 5000
 externalPort = 80
 
+[[ports]]
+localPort = 8081
+externalPort = 8081
+
 [nix]
 packages = ["cargo", "gitFull", "libiconv", "libxcrypt", "openssl", "pkg-config", "playwright-driver", "rustc"]
 
