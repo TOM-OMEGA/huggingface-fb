@@ -1,8 +1,10 @@
-# 使用官方 Python 3.11 slim 版本作為基礎
+# ------------------------------
+# ✅ 使用穩定版 Python 3.11（Playwright 支援最佳）
+# ------------------------------
 FROM python:3.11-slim
 
 # ------------------------------
-# 系統套件安裝（Playwright 需要的依賴）
+# 安裝 Playwright 依賴與常用工具
 # ------------------------------
 RUN apt-get update && apt-get install -y \
     wget curl unzip gnupg \
@@ -18,18 +20,18 @@ RUN apt-get update && apt-get install -y \
 WORKDIR /app
 
 # ------------------------------
-# 複製並安裝 Python 套件
+# 複製 requirements.txt 並安裝 Python 套件
 # ------------------------------
-COPY requirements.txt .
+COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
 # ------------------------------
-# 複製程式碼到容器
+# 複製應用程式原始碼
 # ------------------------------
 COPY . .
 
 # ------------------------------
-# 安裝 Chromium（給 Playwright 用）
+# 安裝 Chromium（Playwright 使用）
 # ------------------------------
 RUN playwright install --with-deps chromium
 
@@ -40,6 +42,7 @@ ENV PORT=8080
 EXPOSE 8080
 
 # ------------------------------
-# 啟動 Flask 伺服器
+# ✅ 使用 start.sh 啟動（可自動重啟）
 # ------------------------------
-CMD ["python3", "replit_scraper.py"]
+RUN chmod +x start.sh
+CMD ["bash", "start.sh"]
