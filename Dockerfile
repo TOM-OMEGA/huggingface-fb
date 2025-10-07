@@ -44,3 +44,4 @@ EXPOSE 8080
 # ------------------------------
 RUN chmod +x start.sh
 CMD ["bash", "start.sh"]
+# Force rebuild Tue Oct  7 02:29:42 PM UTC 2025
