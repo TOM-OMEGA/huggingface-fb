@@ -1,13 +1,13 @@
 import os
 import json
-import threading
 import time
 import asyncio
 from flask import Flask, jsonify, request, abort
 from pyppeteer import launch
+import threading
 
 # =========================================================
-# 🧱 防睡眠 Flask 伺服器（獨立埠）
+# 🧱 Keep-alive Flask（防 Render 睡眠）
 # =========================================================
 keep_alive_app = Flask("keep_alive")
 
@@ -25,50 +25,30 @@ def keep_alive():
     t.daemon = True
     t.start()
 
-
 # =========================================================
-# ⚙️ 主 Flask API
+# ⚙️ 主 Flask 服務
 # =========================================================
 app = Flask(__name__)
-POSTS_FILE = "/tmp/posts.json"
+
 COOKIE_FILE = "/tmp/fb_state.json"
-
+POSTS_FILE = "/tmp/posts.json"
 API_KEY = os.getenv("RENDER_API_KEY")
-FB_URL = os.getenv("FB_PAGE_URL", "https://www.facebook.com/appledaily.tw/posts")
-
+FB_URL = os.getenv("FB_PAGE_URL", "https://www.facebook.com/LARPtimes/")
 
 # =========================================================
-# 🔐 全域授權驗證
+# 🔒 驗證安全金鑰
 # =========================================================
 @app.before_request
-def verify_token():
+def verify_api_key():
     if request.path in ["/", "/status"]:
         return
     key = request.headers.get("Authorization")
-    if API_KEY and (not key or key != f"Bearer {API_KEY}"):
-        print(f"⛔ 未授權存取 {request.path}")
+    if not key or key != f"Bearer {API_KEY}":
+        print(f"⛔ 未授權的存取：{request.path}")
         abort(401)
 
-
 # =========================================================
-# 🧩 初始化 Cookie（從環境變數）
-# =========================================================
-def init_cookies():
-    fb_cookie = os.getenv("FB_COOKIES")
-    if fb_cookie:
-        try:
-            data = json.loads(fb_cookie)
-            with open(COOKIE_FILE, "w", encoding="utf-8") as f:
-                json.dump(data, f, ensure_ascii=False, indent=2)
-            print("✅ FB Cookie 已從環境變數寫入 /tmp/fb_state.json")
-        except Exception as e:
-            print(f"⚠️ FB_COOKIES 解析失敗: {e}")
-    else:
-        print("⚠️ 未設定 FB_COOKIES 環境變數。")
-
-
-# =========================================================
-# 📂 儲存與讀取
+# 📂 資料存取
 # =========================================================
 def save_posts(posts):
     with open(POSTS_FILE, "w", encoding="utf-8") as f:
@@ -83,31 +63,26 @@ def load_posts():
     except:
         return []
 
-
 # =========================================================
-# 🤖 Facebook 爬蟲主程式（使用 Pyppeteer）
+# 🕷️ Facebook 爬蟲主程式
 # =========================================================
 async def scrape_facebook_async():
-    print("🚀 啟動 Facebook 爬蟲")
+    print(f"🚀 開始爬取：{FB_URL}")
 
     if not os.path.exists(COOKIE_FILE):
-        print("❌ 缺少 fb_state.json，請先設定 FB_COOKIES 或上傳 Cookie")
-        return
+        print("❌ 找不到 fb_state.json，請先上傳 Cookie")
+        return []
 
     try:
         print("🧱 啟動 Chromium (Pyppeteer 模式)...")
-        executable_path = "/usr/bin/google-chrome"
-        if not os.path.exists(executable_path):
-            executable_path = "/usr/bin/chromium"
-
         browser = await launch(
             headless=True,
-            executablePath=executable_path,
+            executablePath="/usr/bin/google-chrome",
             args=["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu"]
         )
         page = await browser.newPage()
 
-        # 載入 cookie
+        # 載入 Cookie
         with open(COOKIE_FILE, "r", encoding="utf-8") as f:
             cookie_data = json.load(f)
         cookies = cookie_data.get("cookies", [])
@@ -116,7 +91,7 @@ async def scrape_facebook_async():
         print(f"🌍 前往：{FB_URL}")
         await page.goto(FB_URL, {"timeout": 120000, "waitUntil": "networkidle2"})
 
-        # 模擬滾動載入更多內容
+        # 滾動載入更多內容
         for i in range(3):
             await page.evaluate("window.scrollBy(0, document.body.scrollHeight)")
             await asyncio.sleep(3)
@@ -141,12 +116,8 @@ async def scrape_facebook_async():
         return posts
 
     except Exception as e:
-        print(f"❌ 執行錯誤：{e}")
-
-
-def scrape_facebook():
-    asyncio.run(scrape_facebook_async())
-
+        print(f"❌ 爬蟲執行錯誤：{e}")
+        return []
 
 # =========================================================
 # 📡 API 路由
@@ -164,14 +135,19 @@ def upload_cookie():
 
 
 @app.route("/run", methods=["GET"])
-def run_scraper():
-    print("🟢 收到 /run 請求，啟動爬蟲執行緒")
-    threading.Thread(target=scrape_facebook).start()
-    return jsonify({"message": "🚀 爬蟲已啟動"}), 200
+async def run_scraper():
+    print("🟢 收到 /run 請求，開始執行爬蟲")
+    posts = await scrape_facebook_async()
+    count = len(posts)
+    return jsonify({
+        "message": f"✅ 爬蟲執行完成，共 {count} 則貼文",
+        "posts_count": count,
+        "preview": posts[:3]
+    }), 200
 
 
 @app.route("/status", methods=["GET"])
-def status():
+def get_status():
     posts = load_posts()
     return jsonify({
         "fb_state.json": os.path.exists(COOKIE_FILE),
@@ -183,18 +159,16 @@ def status():
 @app.route("/", methods=["GET"])
 def home():
     return jsonify({
-        "service": "Railway FB Scraper (Pyppeteer)",
+        "service": "Render FB Scraper (Pyppeteer)",
         "status": "online"
     }), 200
 
-
 # =========================================================
-# 🚀 主程式啟動
+# 🚀 主程式
 # =========================================================
 if __name__ == "__main__":
     os.environ["KEEP_ALIVE_PORT"] = "8081"
     keep_alive()
-    init_cookies()
 
     port = int(os.getenv("PORT", 5000))
     print(f"🌐 主 Flask 服務啟動於 port {port}")
