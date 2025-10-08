@@ -25,6 +25,7 @@ def keep_alive():
     t.daemon = True
     t.start()
 
+
 # =========================================================
 # ⚙️ 主 Flask 服務
 # =========================================================
@@ -47,6 +48,7 @@ def verify_api_key():
         print(f"⛔ 未授權的存取：{request.path}")
         abort(401)
 
+
 # =========================================================
 # 📂 資料存取
 # =========================================================
@@ -63,6 +65,7 @@ def load_posts():
     except:
         return []
 
+
 # =========================================================
 # 🕷️ Facebook 爬蟲主程式
 # =========================================================
@@ -70,8 +73,18 @@ async def scrape_facebook_async():
     print(f"🚀 開始爬取：{FB_URL}")
 
     if not os.path.exists(COOKIE_FILE):
-        print("❌ 找不到 fb_state.json，請先上傳 Cookie")
-        return []
+        # 嘗試從環境變數自動生成 Cookie
+        fb_cookie_env = os.getenv("FB_COOKIES")
+        if fb_cookie_env:
+            try:
+                print("📦 從環境變數 FB_COOKIES 生成 Cookie 檔案")
+                with open(COOKIE_FILE, "w", encoding="utf-8") as f:
+                    json.dump(json.loads(fb_cookie_env), f, ensure_ascii=False, indent=2)
+            except Exception as e:
+                print(f"⚠️ 環境變數 Cookie 解析失敗: {e}")
+        else:
+            print("❌ 找不到 fb_state.json，也沒有 FB_COOKIES 環境變數")
+            return []
 
     try:
         print("🧱 啟動 Chromium (Pyppeteer 模式)...")
@@ -111,13 +124,25 @@ async def scrape_facebook_async():
                 })
 
         await browser.close()
-        print(f"✅ 完成，擷取 {len(posts)} 則貼文")
+        print(f"✅ 爬取完成，共 {len(posts)} 則貼文")
         save_posts(posts)
         return posts
 
     except Exception as e:
         print(f"❌ 爬蟲執行錯誤：{e}")
         return []
+
+
+def scrape_facebook():
+    """在新事件迴圈中執行 async 爬蟲"""
+    try:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        loop.run_until_complete(scrape_facebook_async())
+        loop.close()
+    except Exception as e:
+        print(f"⚠️ 爬蟲執行緒錯誤: {e}")
+
 
 # =========================================================
 # 📡 API 路由
@@ -135,15 +160,12 @@ def upload_cookie():
 
 
 @app.route("/run", methods=["GET"])
-async def run_scraper():
-    print("🟢 收到 /run 請求，開始執行爬蟲")
-    posts = await scrape_facebook_async()
-    count = len(posts)
-    return jsonify({
-        "message": f"✅ 爬蟲執行完成，共 {count} 則貼文",
-        "posts_count": count,
-        "preview": posts[:3]
-    }), 200
+def run_scraper():
+    print("🟢 收到 /run 請求，啟動爬蟲執行緒")
+    t = threading.Thread(target=scrape_facebook)
+    t.daemon = True
+    t.start()
+    return jsonify({"message": "🚀 爬蟲已啟動"}), 200
 
 
 @app.route("/status", methods=["GET"])
@@ -162,6 +184,7 @@ def home():
         "service": "Render FB Scraper (Pyppeteer)",
         "status": "online"
     }), 200
+
 
 # =========================================================
 # 🚀 主程式
