@@ -2,16 +2,21 @@
 FROM python:3.11-slim
 
 # ==================================================
-# 安裝 Google Chrome + Pyppeteer 依賴
+# 安裝系統相依套件 + Google Chrome
 # ==================================================
-RUN apt-get update && apt-get install -y wget gnupg unzip fonts-liberation libasound2t64 libnspr4 libnss3 \
-    libx11-xcb1 libxcomposite1 libxdamage1 libxrandr2 libgbm1 libgtk-3-0 libxshmfence1 libxss1 libxext6 libxfixes3 \
+RUN apt-get update && apt-get install -y wget gnupg unzip \
+    fonts-liberation libasound2t64 libnspr4 libnss3 libx11-xcb1 \
+    libxcomposite1 libxdamage1 libxrandr2 libgbm1 libgtk-3-0 \
+    libxshmfence1 libxss1 libxext6 libxfixes3 \
     && rm -rf /var/lib/apt/lists/*
 
-# 安裝 Google Chrome（最新版）
-RUN wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | gpg --dearmor -o /usr/share/keyrings/google-linux-keyring.gpg && \
-    echo "deb [arch=amd64 signed-by=/usr/share/keyrings/google-linux-keyring.gpg] http://dl.google.com/linux/chrome/deb/ stable main" > /etc/apt/sources.list.d/google-chrome.list && \
-    apt-get update && apt-get install -y google-chrome-stable && rm -rf /var/lib/apt/lists/*
+# 安裝 Google Chrome（穩定版本）
+RUN wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | \
+    gpg --dearmor -o /usr/share/keyrings/google-linux-keyring.gpg && \
+    echo "deb [arch=amd64 signed-by=/usr/share/keyrings/google-linux-keyring.gpg] http://dl.google.com/linux/chrome/deb/ stable main" \
+    > /etc/apt/sources.list.d/google-chrome.list && \
+    apt-get update && apt-get install -y google-chrome-stable && \
+    rm -rf /var/lib/apt/lists/*
 
 # ==================================================
 # 安裝 Python 套件
@@ -26,12 +31,12 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # ==================================================
-# 環境變數
+# 環境變數與 Port
 # ==================================================
-ENV PORT=8080
-EXPOSE 8080
+ENV PORT=5000
+EXPOSE 5000
 
 # ==================================================
-# 啟動主程式
+# 啟動主程式（改成正確檔名）
 # ==================================================
-CMD ["python3", "replit_scraper.py"]
+CMD ["python3", "fb_scraper.py"]
