@@ -2,9 +2,10 @@ import os
 import json
 import threading
 import time
-from flask import Flask, jsonify, request
-from pyppeteer import launch
 import asyncio
+import requests
+from flask import Flask, jsonify, request, abort
+from pyppeteer import launch
 
 # =========================================================
 # 🧱 防睡眠 Flask 伺服器（獨立埠）
@@ -31,6 +32,21 @@ app = Flask(__name__)
 POSTS_FILE = "posts.json"
 COOKIE_FILE = "fb_state.json"
 
+# ✅ 從環境變數讀取金鑰
+API_KEY = os.getenv("RENDER_API_KEY")
+
+# =========================================================
+# 🧱 全域驗證（只允許攜帶正確金鑰的請求）
+# =========================================================
+@app.before_request
+def verify_token():
+    # 允許首頁與健康檢查路由
+    if request.path == "/" or request.path == "/status":
+        return
+    key = request.headers.get("Authorization")
+    if not key or key != f"Bearer {API_KEY}":
+        print(f"⛔ 未授權存取 {request.path}")
+        abort(401)
 
 # =========================================================
 # 📂 儲存與讀取
@@ -47,7 +63,6 @@ def load_posts():
             return json.load(f)
     except:
         return []
-
 
 # =========================================================
 # 🤖 Facebook 爬蟲主程式（使用 Pyppeteer）
@@ -89,7 +104,7 @@ async def scrape_facebook_async():
         for el in elements:
             text_el = await el.querySelector('div[data-ad-preview="message"], span[dir="auto"]')
             text = await page.evaluate("(el) => el.innerText", text_el) if text_el else ""
-            img_el = await el.querySelector('img[src*="scontent"]')
+            img_el = await el.querySelector('img[src*=\"scontent\"]')
             img = await page.evaluate("(el) => el.src", img_el) if img_el else None
             if text or img:
                 posts.append({
@@ -106,10 +121,8 @@ async def scrape_facebook_async():
     except Exception as e:
         print(f"❌ 執行錯誤：{e}")
 
-
 def scrape_facebook():
     asyncio.run(scrape_facebook_async())
-
 
 # =========================================================
 # 📡 API 路由
@@ -125,12 +138,11 @@ def upload_cookie():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-
 @app.route("/run", methods=["GET"])
 def run_scraper():
+    print("🟢 收到 /run 請求，啟動爬蟲執行緒")
     threading.Thread(target=scrape_facebook).start()
     return jsonify({"message": "🚀 爬蟲已啟動"}), 200
-
 
 @app.route("/status", methods=["GET"])
 def status():
@@ -141,14 +153,12 @@ def status():
         "recent_posts": posts[-3:] if posts else []
     }), 200
 
-
 @app.route("/", methods=["GET"])
 def home():
     return jsonify({
         "service": "Railway FB Scraper (Pyppeteer)",
         "status": "online"
     }), 200
-
 
 # =========================================================
 # 🚀 主程式啟動
