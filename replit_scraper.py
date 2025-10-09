@@ -2,9 +2,10 @@ import os
 import json
 import time
 import asyncio
-import threading
+import traceback
 from flask import Flask, jsonify, request, abort
 from pyppeteer import launch
+import threading
 
 # =========================================================
 # 🧱 Keep-alive Flask（防 Render 睡眠）
@@ -21,8 +22,7 @@ def run_keep_alive():
     keep_alive_app.run(host="0.0.0.0", port=port)
 
 def keep_alive():
-    t = threading.Thread(target=run_keep_alive)
-    t.daemon = True
+    t = threading.Thread(target=run_keep_alive, daemon=True)
     t.start()
 
 # =========================================================
@@ -123,7 +123,7 @@ async def scrape_facebook_async():
         )
         page = await browser.newPage()
 
-        # 移除 "navigator.webdriver" 屬性 (反爬蟲防護)
+        # 移除 "navigator.webdriver" 屬性
         await page.evaluateOnNewDocument("""
             () => {
                 Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
@@ -177,7 +177,8 @@ async def scrape_facebook_async():
         return posts
 
     except Exception as e:
-        print(f"❌ 爬蟲執行錯誤：{e}")
+        print("❌ 爬蟲執行錯誤：")
+        traceback.print_exc()
         return []
 
 # =========================================================
@@ -194,21 +195,20 @@ def upload_cookie():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-
 @app.route("/run", methods=["GET"])
 def run_scraper():
-    print("🟢 收到 /run 請求，啟動背景爬蟲執行緒")
-
-    def worker():
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        posts = loop.run_until_complete(scrape_facebook_async())
+    print("🟢 收到 /run 請求，開始執行爬蟲")
+    try:
+        posts = asyncio.run(scrape_facebook_async())
         print(f"✅ 爬蟲完成，共 {len(posts)} 則貼文")
-        loop.close()
-
-    threading.Thread(target=worker, daemon=True).start()
-    return jsonify({"message": "🚀 爬蟲已啟動"}), 200
-
+        return jsonify({
+            "message": f"✅ 爬蟲執行完成，共 {len(posts)} 則貼文",
+            "posts_count": len(posts),
+            "preview": posts[:3]
+        }), 200
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
 
 @app.route("/status", methods=["GET"])
 def get_status():
@@ -218,7 +218,6 @@ def get_status():
         "posts_count": len(posts),
         "recent_posts": posts[-3:] if posts else []
     }), 200
-
 
 @app.route("/", methods=["GET"])
 def home():
