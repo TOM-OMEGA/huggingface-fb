@@ -78,6 +78,23 @@ def load_posts():
         return []
 
 # =========================================================
+# 🔍 自動偵測 Chrome 路徑
+# =========================================================
+def find_chrome_path():
+    paths = [
+        "/usr/bin/google-chrome",
+        "/usr/bin/chromium",
+        "/usr/bin/chromium-browser",
+        "/opt/google/chrome/chrome"
+    ]
+    for path in paths:
+        if os.path.exists(path):
+            print(f"🧭 偵測到 Chrome 執行路徑：{path}")
+            return path
+    print("⚠️ 未找到 Chrome，請確認 Dockerfile 有安裝 google-chrome-stable")
+    return None
+
+# =========================================================
 # 🕷️ Facebook 爬蟲主程式
 # =========================================================
 async def scrape_facebook_async():
@@ -88,13 +105,30 @@ async def scrape_facebook_async():
         return []
 
     try:
+        chrome_path = find_chrome_path()
+        if not chrome_path:
+            return []
+
         print("🧱 啟動 Chromium (Pyppeteer 模式)...")
         browser = await launch(
             headless=True,
-            executablePath="/usr/bin/google-chrome",
-            args=["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu"]
+            executablePath=chrome_path,
+            args=[
+                "--no-sandbox",
+                "--disable-dev-shm-usage",
+                "--disable-gpu",
+                "--disable-blink-features=AutomationControlled",
+                "--window-size=1280,800"
+            ]
         )
         page = await browser.newPage()
+
+        # 移除 "navigator.webdriver" 屬性 (反爬蟲防護)
+        await page.evaluateOnNewDocument("""
+            () => {
+                Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+            }
+        """)
 
         # 載入 Cookie
         with open(COOKIE_FILE, "r", encoding="utf-8") as f:
@@ -104,6 +138,12 @@ async def scrape_facebook_async():
 
         print(f"🌍 前往：{FB_URL}")
         await page.goto(FB_URL, {"timeout": 120000, "waitUntil": "networkidle2"})
+
+        html = await page.content()
+        if "登入 Facebook" in html or "login" in page.url:
+            print("⚠️ Cookie 已失效或未登入狀態")
+            await browser.close()
+            return []
 
         # 滾動載入更多內容
         for i in range(3):
@@ -116,18 +156,20 @@ async def scrape_facebook_async():
         print(f"📑 偵測到 {len(elements)} 則貼文元素")
 
         for idx, el in enumerate(elements):
-            text_el = await el.querySelector('div[data-ad-preview="message"], span[dir="auto"]')
-            text = await page.evaluate("(el) => el.innerText", text_el) if text_el else ""
-            img_el = await el.querySelector('img[src*=\"scontent\"]')
-            img = await page.evaluate("(el) => el.src", img_el) if img_el else None
-
-            if text or img:
-                posts.append({
-                    "content": text.strip(),
-                    "image": img,
-                    "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
-                })
-                print(f"📝 第 {idx+1} 則貼文擷取成功")
+            try:
+                text_el = await el.querySelector('div[data-ad-preview="message"], span[dir="auto"]')
+                text = await page.evaluate("(el) => el.innerText", text_el) if text_el else ""
+                img_el = await el.querySelector('img[src*=\"scontent\"]')
+                img = await page.evaluate("(el) => el.src", img_el) if img_el else None
+                if text or img:
+                    posts.append({
+                        "content": text.strip(),
+                        "image": img,
+                        "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
+                    })
+                    print(f"📝 第 {idx+1} 則貼文擷取成功")
+            except Exception as e:
+                print(f"⚠️ 第 {idx+1} 則貼文解析錯誤: {e}")
 
         await browser.close()
         print(f"✅ 爬取完成，共 {len(posts)} 則貼文")
