@@ -23,8 +23,7 @@ def run_keep_alive():
     keep_alive_app.run(host="0.0.0.0", port=port)
 
 def keep_alive():
-    t = threading.Thread(target=run_keep_alive, daemon=True)
-    t.start()
+    threading.Thread(target=run_keep_alive, daemon=True).start()
 
 # =========================================================
 # ⚙️ 主 Flask 服務
@@ -110,7 +109,7 @@ async def scrape_facebook_async():
         if not chrome_path:
             return []
 
-        # 修正 signal 錯誤（Pyppeteer 在子線程中會報 signal 問題）
+        # 修正 signal 問題
         signal.signal = lambda *args, **kwargs: None
 
         print("🧱 啟動 Chromium (Pyppeteer 模式)...", flush=True)
@@ -121,15 +120,29 @@ async def scrape_facebook_async():
                 "--no-sandbox",
                 "--disable-dev-shm-usage",
                 "--disable-gpu",
+                "--disable-software-rasterizer",
                 "--disable-blink-features=AutomationControlled",
-                "--window-size=1280,800"
+                "--window-size=1280,800",
+                "--hide-scrollbars",
+                "--single-process",
+                "--disable-extensions",
+                "--disable-infobars"
             ]
         )
+
         page = await browser.newPage()
+
+        # 偽裝成一般使用者
+        await page.setUserAgent(
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/120.0.0.0 Safari/537.36"
+        )
 
         await page.evaluateOnNewDocument("""
             () => {
                 Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+                window.chrome = { runtime: {} };
             }
         """)
 
@@ -140,7 +153,7 @@ async def scrape_facebook_async():
         await page.setCookie(*cookies)
 
         print(f"🌍 前往：{FB_URL}", flush=True)
-        await page.goto(FB_URL, {"timeout": 120000, "waitUntil": "networkidle2"})
+        await page.goto(FB_URL, timeout=120000, waitUntil="networkidle2")
 
         html = await page.content()
         if "登入 Facebook" in html or "login" in page.url:
@@ -155,12 +168,12 @@ async def scrape_facebook_async():
             await asyncio.sleep(4)
 
         posts = []
-        elements = await page.querySelectorAll('div[role=\"article\"]')
+        elements = await page.querySelectorAll('div[role="article"]')
         print(f"📑 偵測到 {len(elements)} 則貼文元素", flush=True)
 
         for idx, el in enumerate(elements):
             try:
-                text_el = await el.querySelector('div[data-ad-preview=\"message\"], span[dir=\"auto\"]')
+                text_el = await el.querySelector('div[data-ad-preview="message"], span[dir="auto"]')
                 text = await page.evaluate("(el) => el.innerText", text_el) if text_el else ""
                 img_el = await el.querySelector('img[src*=\"scontent\"]')
                 img = await page.evaluate("(el) => el.src", img_el) if img_el else None
